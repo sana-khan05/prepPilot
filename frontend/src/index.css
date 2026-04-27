@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  background-color: #f8fafc !important;
+  min-height: 100vh;
+  color: #1e293b;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all duration-200 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-offset-2; }
+  .btn-primary { @apply btn bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 text-sm focus:ring-emerald-400 active:scale-95 shadow-md shadow-emerald-200; }
+  .btn-secondary { @apply btn bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-5 py-2.5 text-sm shadow-sm; }
+  .btn-ghost { @apply btn bg-transparent hover:bg-slate-100 text-slate-500 px-4 py-2 text-sm; }
+  .btn-danger { @apply btn bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 text-sm; }
+  .btn-lg { @apply px-7 py-3.5 text-base; }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .card { @apply bg-white border border-slate-200 rounded-2xl shadow-sm; }
+  .card-hover { @apply card transition-all duration-200 hover:border-emerald-200 hover:shadow-md; }
+  .input { @apply w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition-all shadow-sm; }
+  .input-error { @apply border-red-300 focus:ring-red-300/40 focus:border-red-400; }
+  .label { @apply block text-sm font-semibold text-slate-600 mb-1.5; }
+  .badge { @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold; }
+  .badge-green  { @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200; }
+  .badge-blue   { @apply badge bg-blue-50 text-blue-700 border border-blue-200; }
+  .badge-amber  { @apply badge bg-amber-50 text-amber-700 border border-amber-200; }
+  .badge-red    { @apply badge bg-red-50 text-red-700 border border-red-200; }
+  .badge-gray   { @apply badge bg-slate-100 text-slate-600 border border-slate-200; }
+  .page-container { @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8; }
+  .page-title { @apply text-2xl font-bold text-slate-900 tracking-tight; }
+  .stat-card { @apply card p-5 flex flex-col gap-3; }
+  .section-heading { @apply text-base font-bold text-slate-800 mb-4; }
+  .divider { @apply border-t border-slate-100 my-6; }
+}
+
+@layer utilities {
+  .text-gradient { @apply bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent; }
+  .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
