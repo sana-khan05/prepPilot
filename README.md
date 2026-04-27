@@ -43,8 +43,8 @@ InterviewIQ is an **AI-driven adaptive interview system** and **ATS-based resume
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/yourusername/interviewiq.git
-cd interviewiq
+git clone https://github.com/sana-khan05/prepPilot.git
+cd prepPilot
 ```
 
 ### 2. Setup Backend
