@@ -169,12 +169,8 @@ OPENAI_API_KEY=sk-...
 
 ## 👤 Author
 
-Built with ❤️ by [Your Name]  
-LinkedIn: [Your LinkedIn]  
-GitHub: [Your GitHub]
+Built with ❤️ by [Sana]  
+LinkedIn: [https://www.linkedin.com/in/imsanakhan/]  
 
----
 
-## 📄 License
 
-MIT License — feel free to use for portfolio, learning, and projects.
