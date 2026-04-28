@@ -12,7 +12,7 @@ const questionSchema = new mongoose.Schema({
     enum: ['easy', 'medium', 'hard'],
     default: 'medium',
   },
-  topic: { type: String, default: null },         // e.g. "React", "System Design"
+  topic: { type: String, default: null },
   userAnswer: { type: String, default: null },
   aiEvaluation: {
     score: { type: Number, default: null, min: 0, max: 10 },
@@ -27,7 +27,6 @@ const questionSchema = new mongoose.Schema({
 
 const interviewSessionSchema = new mongoose.Schema(
   {
-    // ── Participants ──────────────────────────────────
     candidate: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -37,10 +36,8 @@ const interviewSessionSchema = new mongoose.Schema(
     resume: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Resume',
-      default: null,  // Optional: interview can be without resume
+      default: null,
     },
-
-    // ── Session Config ────────────────────────────────
     interviewType: {
       type: String,
       enum: ['technical', 'hr', 'behavioral', 'coding', 'case', 'mixed'],
@@ -53,8 +50,6 @@ const interviewSessionSchema = new mongoose.Schema(
       default: 'adaptive',
     },
     totalQuestionsPlanned: { type: Number, default: 10 },
-
-    // ── Session State ─────────────────────────────────
     status: {
       type: String,
       enum: ['not_started', 'in_progress', 'completed', 'abandoned'],
@@ -63,12 +58,8 @@ const interviewSessionSchema = new mongoose.Schema(
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
     durationMinutes: { type: Number, default: null },
-
-    // ── Questions & Answers ───────────────────────────
     questions: [questionSchema],
     currentQuestionIndex: { type: Number, default: 0 },
-
-    // ── Performance Scores (filled at end) ────────────
     overallScore: { type: Number, default: null, min: 0, max: 100 },
     scores: {
       technical: { type: Number, default: null },
@@ -78,15 +69,11 @@ const interviewSessionSchema = new mongoose.Schema(
     },
     fillerWordCount: { type: Number, default: 0 },
     totalFillerWords: [{ type: String }],
-
-    // ── AI Feedback Report ────────────────────────────
     aiFeedbackReport: { type: String, default: null },
     strengths: [{ type: String }],
     weaknesses: [{ type: String }],
     improvementPlan: [{ type: String }],
-    resumeVsInterviewMismatch: [{ type: String }], // 🔥 KEY FEATURE
-
-    // ── Report Status ─────────────────────────────────
+    resumeVsInterviewMismatch: [{ type: String }],
     reportGenerated: { type: Boolean, default: false },
     reportGeneratedAt: { type: Date, default: null },
   },
@@ -96,12 +83,7 @@ const interviewSessionSchema = new mongoose.Schema(
   }
 );
 
-// Virtual: Questions answered
-interviewSessionSchema.virtual('questionsAnswered').get(function () {
-  return this.questions.filter(q => q.userAnswer && !q.skipped).length;
-});
-
-// Virtual: Completion percentage
+// ── Virtuals ───────────────────────────────────────────
 interviewSessionSchema.virtual('questionsAnswered').get(function () {
   return (this.questions || []).filter(q => q.userAnswer && !q.skipped).length;
 });
@@ -110,3 +92,8 @@ interviewSessionSchema.virtual('completionPercent').get(function () {
   if (!this.totalQuestionsPlanned) return 0;
   return Math.round((this.questionsAnswered / this.totalQuestionsPlanned) * 100);
 });
+
+interviewSessionSchema.index({ candidate: 1, status: 1 });
+interviewSessionSchema.index({ candidate: 1, createdAt: -1 });
+
+module.exports = mongoose.model('InterviewSession', interviewSessionSchema);
