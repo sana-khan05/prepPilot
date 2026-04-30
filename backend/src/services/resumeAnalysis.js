@@ -8,7 +8,18 @@ return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 const extractTextFromPDF = async (filePath) => {
   const pdfParse = require('pdf-parse');
-  const dataBuffer = fs.readFileSync(filePath);
+  
+  let dataBuffer;
+  // Check if it's a URL (Cloudinary) or local file
+  if (filePath.startsWith('http')) {
+    const axios = require('axios');
+    const response = await axios.get(filePath, { responseType: 'arraybuffer' });
+    dataBuffer = Buffer.from(response.data);
+  } else {
+    const fs = require('fs');
+    dataBuffer = fs.readFileSync(filePath);
+  }
+  
   const data = await pdfParse(dataBuffer);
   return data.text;
 };

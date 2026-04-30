@@ -4,11 +4,6 @@ const Resume = require('../models/Resume');
 const User = require('../models/User');
 const { asyncHandler } = require('../middleware/errorHandler');
 
-// ─────────────────────────────────────────────────────
-// @route   POST /api/v1/resumes/upload
-// @desc    Upload a resume file
-// @access  Private (candidate)
-// ─────────────────────────────────────────────────────
 const uploadResume = asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'Please upload a resume file (PDF or DOCX).' });
@@ -16,36 +11,31 @@ const uploadResume = asyncHandler(async (req, res) => {
 
   const { label, targetRole, versionLabel } = req.body;
   const file = req.file;
-  const ext = path.extname(file.originalname).replace('.', '').toLowerCase();
+  const ext = file.originalname.split('.').pop().toLowerCase();
 
-  // Mark previous versions as not latest
-  await Resume.updateMany(
-    { user: req.user.id, isLatest: true },
-    { isLatest: false }
-  );
+  // Handle both local and Cloudinary uploads
+  const fileUrl = file.path; // Cloudinary gives full URL, local gives file path
+  const fileSize = file.size || 0;
 
-  // Count versions
+  await Resume.updateMany({ user: req.user.id, isLatest: true }, { isLatest: false });
   const versionCount = await Resume.countDocuments({ user: req.user.id });
 
-  // Create resume record
   const resume = await Resume.create({
     user: req.user.id,
     originalName: file.originalname,
-    fileName: file.filename,
-    filePath: file.path,
-    fileSize: file.size,
+    fileName: file.filename || file.originalname,
+    filePath: fileUrl,
+    fileSize: fileSize,
     fileType: ext === 'doc' ? 'doc' : ext === 'docx' ? 'docx' : 'pdf',
     versionNumber: versionCount + 1,
     versionLabel: versionLabel || `v${versionCount + 1}`,
-    label: label || `My Resume`,
+    label: label || 'My Resume',
     targetRole: targetRole || null,
     isLatest: true,
+    cloudinaryUrl: process.env.NODE_ENV === 'production' ? fileUrl : null,
   });
 
-  // Update user stats
-  await User.findByIdAndUpdate(req.user.id, {
-    $inc: { totalResumesUploaded: 1 },
-  });
+  await User.findByIdAndUpdate(req.user.id, { $inc: { totalResumesUploaded: 1 } });
 
   res.status(201).json({
     success: true,
@@ -55,7 +45,7 @@ const uploadResume = asyncHandler(async (req, res) => {
       label: resume.label,
       originalName: resume.originalName,
       fileType: resume.fileType,
-      fileSizeKB: resume.fileSizeKB,
+      fileSizeKB: Math.round(fileSize / 1024),
       versionNumber: resume.versionNumber,
       versionLabel: resume.versionLabel,
       isLatest: resume.isLatest,
@@ -66,88 +56,54 @@ const uploadResume = asyncHandler(async (req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────
-// @route   GET /api/v1/resumes
-// @desc    Get all resumes for current user
-// @access  Private
-// ─────────────────────────────────────────────────────
 const getMyResumes = asyncHandler(async (req, res) => {
   const resumes = await Resume.find({ user: req.user.id })
     .sort({ createdAt: -1 })
-    .select('-extractedText -parsedSections'); // Don't send full text in list
+    .select('-extractedText -parsedSections');
 
-  res.status(200).json({
-    success: true,
-    count: resumes.length,
-    resumes,
-  });
+  res.status(200).json({ success: true, count: resumes.length, resumes });
 });
 
-// ─────────────────────────────────────────────────────
-// @route   GET /api/v1/resumes/:id
-// @desc    Get a single resume with full data
-// @access  Private
-// ─────────────────────────────────────────────────────
 const getResume = asyncHandler(async (req, res) => {
-  const resume = await Resume.findOne({
-    _id: req.params.id,
-    user: req.user.id,
-  });
-
-  if (!resume) {
-    return res.status(404).json({ success: false, message: 'Resume not found.' });
-  }
-
+  const resume = await Resume.findOne({ _id: req.params.id, user: req.user.id });
+  if (!resume) return res.status(404).json({ success: false, message: 'Resume not found.' });
   res.status(200).json({ success: true, resume });
 });
 
-// ─────────────────────────────────────────────────────
-// @route   DELETE /api/v1/resumes/:id
-// @desc    Delete a resume
-// @access  Private
-// ─────────────────────────────────────────────────────
 const deleteResume = asyncHandler(async (req, res) => {
-  const resume = await Resume.findOne({
-    _id: req.params.id,
-    user: req.user.id,
-  });
+  const resume = await Resume.findOne({ _id: req.params.id, user: req.user.id });
+  if (!resume) return res.status(404).json({ success: false, message: 'Resume not found.' });
 
-  if (!resume) {
-    return res.status(404).json({ success: false, message: 'Resume not found.' });
-  }
-
-  // Delete file from disk
-  if (resume.filePath && fs.existsSync(resume.filePath)) {
+  // Delete from Cloudinary if production
+  if (process.env.NODE_ENV === 'production' && resume.cloudinaryUrl) {
+    try {
+      const { cloudinary } = require('../config/cloudinary');
+      const publicId = resume.cloudinaryUrl.split('/').pop().split('.')[0];
+      await cloudinary.uploader.destroy(`preppilot-resumes/${publicId}`, { resource_type: 'raw' });
+    } catch (err) {
+      console.error('Cloudinary delete error:', err.message);
+    }
+  } else if (resume.filePath && fs.existsSync(resume.filePath)) {
     fs.unlinkSync(resume.filePath);
   }
 
   await Resume.findByIdAndDelete(req.params.id);
 
-  // If deleted was latest, promote previous version
   if (resume.isLatest) {
     const prevResume = await Resume.findOne({ user: req.user.id }).sort({ createdAt: -1 });
-    if (prevResume) {
-      prevResume.isLatest = true;
-      await prevResume.save();
-    }
+    if (prevResume) { prevResume.isLatest = true; await prevResume.save(); }
   }
 
   res.status(200).json({ success: true, message: 'Resume deleted successfully.' });
 });
 
-// ─────────────────────────────────────────────────────
-// @route   GET /api/v1/resumes/:id/download
-// @desc    Download resume file
-// @access  Private
-// ─────────────────────────────────────────────────────
 const downloadResume = asyncHandler(async (req, res) => {
-  const resume = await Resume.findOne({
-    _id: req.params.id,
-    user: req.user.id,
-  });
+  const resume = await Resume.findOne({ _id: req.params.id, user: req.user.id });
+  if (!resume) return res.status(404).json({ success: false, message: 'Resume not found.' });
 
-  if (!resume) {
-    return res.status(404).json({ success: false, message: 'Resume not found.' });
+  // If Cloudinary URL — redirect to it
+  if (resume.filePath && resume.filePath.startsWith('http')) {
+    return res.redirect(resume.filePath);
   }
 
   if (!fs.existsSync(resume.filePath)) {
@@ -157,60 +113,28 @@ const downloadResume = asyncHandler(async (req, res) => {
   res.download(resume.filePath, resume.originalName);
 });
 
-// ─────────────────────────────────────────────────────
-// @route   PUT /api/v1/resumes/:id/label
-// @desc    Update resume label or targetRole
-// @access  Private
-// ─────────────────────────────────────────────────────
 const updateResumeLabel = asyncHandler(async (req, res) => {
   const { label, targetRole, versionLabel } = req.body;
-
   const resume = await Resume.findOneAndUpdate(
     { _id: req.params.id, user: req.user.id },
     { label, targetRole, versionLabel },
     { new: true, runValidators: true }
   );
-
-  if (!resume) {
-    return res.status(404).json({ success: false, message: 'Resume not found.' });
-  }
-
+  if (!resume) return res.status(404).json({ success: false, message: 'Resume not found.' });
   res.status(200).json({ success: true, message: 'Resume updated.', resume });
 });
 
-// ─────────────────────────────────────────────────────
-// @route   GET /api/v1/resumes/stats
-// @desc    Get resume stats for dashboard
-// @access  Private
-// ─────────────────────────────────────────────────────
 const getResumeStats = asyncHandler(async (req, res) => {
   const [totalResumes, analyzedResumes, latestResume] = await Promise.all([
     Resume.countDocuments({ user: req.user.id }),
     Resume.countDocuments({ user: req.user.id, isAnalyzed: true }),
     Resume.findOne({ user: req.user.id, isLatest: true }).select('atsScore label versionLabel'),
   ]);
-
-  const bestScore = await Resume.findOne({ user: req.user.id })
-    .sort({ atsScore: -1 })
-    .select('atsScore label');
-
+  const bestScore = await Resume.findOne({ user: req.user.id }).sort({ atsScore: -1 }).select('atsScore label');
   res.status(200).json({
     success: true,
-    stats: {
-      totalResumes,
-      analyzedResumes,
-      latestResume,
-      bestAtsScore: bestScore?.atsScore || null,
-    },
+    stats: { totalResumes, analyzedResumes, latestResume, bestAtsScore: bestScore?.atsScore || null },
   });
 });
 
-module.exports = {
-  uploadResume,
-  getMyResumes,
-  getResume,
-  deleteResume,
-  downloadResume,
-  updateResumeLabel,
-  getResumeStats,
-};
+module.exports = { uploadResume, getMyResumes, getResume, deleteResume, downloadResume, updateResumeLabel, getResumeStats };
