@@ -24,7 +24,8 @@ const analyzeResume = asyncHandler(async (req, res) => {
 
   // Check if file exists
   const fs = require('fs');
-  if (!fs.existsSync(resume.filePath)) {
+  // Skip file existence check for Cloudinary URLs
+  if (!resume.filePath.startsWith('http') && !fs.existsSync(resume.filePath)) {
     return res.status(404).json({ success: false, message: 'Resume file not found on server.' });
   }
 
