@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const getGemini = () => {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  return genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  return genAI.getGenerativeModel({ model: 'gemini-pro' });
 };
 
 const extractTextFromPDF = async (filePath) => {
