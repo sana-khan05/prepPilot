@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
+  
   {
     // ── Identity ──────────────────────────────────────
     firstName: {
@@ -79,6 +80,7 @@ const userSchema = new mongoose.Schema(
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
+  
 );
 
 // ── Virtual: Full Name ─────────────────────────────────

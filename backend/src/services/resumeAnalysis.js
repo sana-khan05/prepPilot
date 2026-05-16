@@ -1,5 +1,8 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const pdfParse = require('pdf-parse');
+const axios = require('axios');
 const fs = require('fs');
+const mammoth = require('mammoth');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const getGemini = () => {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -7,25 +10,18 @@ const getGemini = () => {
 };
 
 const extractTextFromPDF = async (filePath) => {
-  const pdfParse = require('pdf-parse');
-  
   let dataBuffer;
-  // Check if it's a URL (Cloudinary) or local file
   if (filePath.startsWith('http')) {
-    const axios = require('axios');
     const response = await axios.get(filePath, { responseType: 'arraybuffer' });
     dataBuffer = Buffer.from(response.data);
   } else {
-    const fs = require('fs');
     dataBuffer = fs.readFileSync(filePath);
   }
-  
   const data = await pdfParse(dataBuffer);
   return data.text;
 };
 
 const extractTextFromDOCX = async (filePath) => {
-  const mammoth = require('mammoth');
   const result = await mammoth.extractRawText({ path: filePath });
   return result.value;
 };
@@ -40,19 +36,16 @@ const calculateATSScore = (resumeText, jobDescription = '') => {
   let score = 0;
   const text = resumeText.toLowerCase();
   const sections = {
-    contact: ['email', 'phone', 'linkedin', 'github', 'address'],
-    summary: ['summary', 'objective', 'profile', 'about'],
-    experience: ['experience', 'work', 'employment', 'job', 'internship'],
-    education: ['education', 'degree', 'university', 'college', 'bachelor', 'master'],
-    skills: ['skills', 'technologies', 'tools', 'languages', 'frameworks'],
-    projects: ['project', 'built', 'developed', 'created', 'implemented'],
+    contact: ['email', 'phone', 'linkedin', 'github'],
+    summary: ['summary', 'objective', 'profile'],
+    experience: ['experience', 'work', 'internship'],
+    education: ['education', 'degree', 'university'],
+    skills: ['skills', 'technologies', 'tools'],
+    projects: ['project', 'built', 'developed'],
   };
   let sectionScore = 0;
-  const sectionResults = {};
-  Object.entries(sections).forEach(([section, keywords]) => {
-    const found = keywords.some(k => text.includes(k));
-    sectionResults[section] = found ? 5 : 0;
-    if (found) sectionScore += 5;
+  Object.values(sections).forEach(keywords => {
+    if (keywords.some(k => text.includes(k))) sectionScore += 5;
   });
   score += Math.min(sectionScore, 30);
   const lines = resumeText.split('\n').filter(l => l.trim());
@@ -64,12 +57,11 @@ const calculateATSScore = (resumeText, jobDescription = '') => {
     const jdWords = jobDescription.toLowerCase().split(/\W+/).filter(w => w.length > 4);
     const uniqueJdWords = [...new Set(jdWords)];
     const matchCount = uniqueJdWords.filter(w => text.includes(w)).length;
-    const matchPercent = matchCount / Math.max(uniqueJdWords.length, 1);
-    score += Math.round(matchPercent * 30);
+    score += Math.round((matchCount / Math.max(uniqueJdWords.length, 1)) * 30);
   } else {
     score += 15;
   }
-  const techKeywords = ['javascript','python','java','react','node','mongodb','sql','aws','docker','git','api','html','css','typescript','express','django','flask','spring','kubernetes','linux','agile','scrum'];
+  const techKeywords = ['javascript','python','java','react','node','mongodb','sql','aws','docker','git','api','html','css','typescript'];
   const techFound = techKeywords.filter(k => text.includes(k)).length;
   score += Math.min(techFound * 2, 20);
   return {
@@ -77,10 +69,9 @@ const calculateATSScore = (resumeText, jobDescription = '') => {
     breakdown: {
       sectionCompleteness: Math.min(sectionScore, 30),
       formatting: 20,
-      keywordMatch: jobDescription ? Math.round((score - sectionScore - 15) / 30 * 30) : 15,
+      keywordMatch: jobDescription ? 15 : 15,
       techKeywords: Math.min(techFound * 2, 20),
     },
-    sectionResults,
   };
 };
 
@@ -88,11 +79,10 @@ const detectBias = (resumeText) => {
   const text = resumeText.toLowerCase();
   const flags = [];
   const checks = [
-    { words: ['born in','age:','dob:','date of birth','years old'], label: 'Age indicator' },
-    { words: ['he/','she/','him/','her/'], label: 'Gendered pronoun' },
-    { words: ['native of','hometown','originally from'], label: 'Location bias' },
-    { words: ['christian','muslim','hindu','jewish'], label: 'Religion mention' },
-    { words: ['married','single','divorced','spouse'], label: 'Marital status' },
+    { words: ['born in', 'age:', 'dob:', 'date of birth', 'years old'], label: 'Age indicator' },
+    { words: ['he/', 'she/', 'him/', 'her/'], label: 'Gendered pronoun' },
+    { words: ['native of', 'hometown', 'originally from'], label: 'Location bias' },
+    { words: ['married', 'single', 'divorced', 'spouse'], label: 'Marital status' },
   ];
   checks.forEach(({ words, label }) => {
     words.forEach(w => { if (text.includes(w)) flags.push(`${label}: "${w}"`); });
@@ -102,26 +92,8 @@ const detectBias = (resumeText) => {
 
 const analyzeResumeWithAI = async (resumeText, targetRole = '', jobDescription = '') => {
   const model = getGemini();
-
-  const prompt = `You are an expert ATS resume analyzer. Analyze this resume and return ONLY valid JSON, no extra text, no markdown.
-
-Return exactly this JSON structure:
-{
-  "overallFeedback": "2-3 sentence summary",
-  "sectionRatings": {
-    "summary": { "score": 3, "feedback": "feedback here" },
-    "experience": { "score": 4, "feedback": "feedback here" },
-    "skills": { "score": 3, "feedback": "feedback here" },
-    "projects": { "score": 3, "feedback": "feedback here" },
-    "education": { "score": 4, "feedback": "feedback here" }
-  },
-  "skillsFound": ["skill1", "skill2"],
-  "missingSkills": ["skill1", "skill2"],
-  "strengths": ["strength1", "strength2"],
-  "improvements": ["improvement1", "improvement2"],
-  "rewrittenBullets": ["better bullet 1", "better bullet 2"],
-  "powerWords": ["word1", "word2"]
-}
+  const prompt = `You are an expert ATS resume analyzer. Analyze this resume and return ONLY valid JSON, no markdown:
+{"overallFeedback":"summary","sectionRatings":{"summary":{"score":3,"feedback":""},"experience":{"score":4,"feedback":""},"skills":{"score":3,"feedback":""},"projects":{"score":3,"feedback":""},"education":{"score":4,"feedback":""}},"skillsFound":[],"missingSkills":[],"strengths":[],"improvements":[],"rewrittenBullets":[],"powerWords":[]}
 
 RESUME: ${resumeText.substring(0, 3000)}
 TARGET ROLE: ${targetRole || 'Not specified'}
@@ -129,18 +101,10 @@ JOB DESCRIPTION: ${jobDescription ? jobDescription.substring(0, 500) : 'Not prov
 
   const result = await model.generateContent(prompt);
   const content = result.response.text().trim();
-
-  // Remove markdown code blocks if present
   const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Invalid AI response format');
-
   return JSON.parse(jsonMatch[0]);
 };
 
-module.exports = {
-  extractResumeText,
-  calculateATSScore,
-  detectBias,
-  analyzeResumeWithAI,
-};
+module.exports = { extractResumeText, calculateATSScore, detectBias, analyzeResumeWithAI };
