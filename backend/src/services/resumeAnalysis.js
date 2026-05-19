@@ -2,12 +2,7 @@ const pdfParse = require('pdf-parse');
 const axios = require('axios');
 const fs = require('fs');
 const mammoth = require('mammoth');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-const getGemini = () => {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  return genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-};
+const { generateAI } = require('./aiHelper');
 
 const extractTextFromPDF = async (filePath) => {
   let dataBuffer;
@@ -61,7 +56,7 @@ const calculateATSScore = (resumeText, jobDescription = '') => {
   } else {
     score += 15;
   }
-  const techKeywords = ['javascript','python','java','react','node','mongodb','sql','aws','docker','git','api','html','css','typescript'];
+  const techKeywords = ['javascript','python','java','react','node','mongodb','sql','aws','docker','git','html','css','typescript','express','django','flask'];
   const techFound = techKeywords.filter(k => text.includes(k)).length;
   score += Math.min(techFound * 2, 20);
   return {
@@ -69,7 +64,7 @@ const calculateATSScore = (resumeText, jobDescription = '') => {
     breakdown: {
       sectionCompleteness: Math.min(sectionScore, 30),
       formatting: 20,
-      keywordMatch: jobDescription ? 15 : 15,
+      keywordMatch: 15,
       techKeywords: Math.min(techFound * 2, 20),
     },
   };
@@ -79,10 +74,10 @@ const detectBias = (resumeText) => {
   const text = resumeText.toLowerCase();
   const flags = [];
   const checks = [
-    { words: ['born in', 'age:', 'dob:', 'date of birth', 'years old'], label: 'Age indicator' },
+    { words: ['born in', 'age:', 'dob:', 'years old'], label: 'Age indicator' },
     { words: ['he/', 'she/', 'him/', 'her/'], label: 'Gendered pronoun' },
-    { words: ['native of', 'hometown', 'originally from'], label: 'Location bias' },
-    { words: ['married', 'single', 'divorced', 'spouse'], label: 'Marital status' },
+    { words: ['native of', 'hometown'], label: 'Location bias' },
+    { words: ['married', 'single', 'divorced'], label: 'Marital status' },
   ];
   checks.forEach(({ words, label }) => {
     words.forEach(w => { if (text.includes(w)) flags.push(`${label}: "${w}"`); });
@@ -91,20 +86,35 @@ const detectBias = (resumeText) => {
 };
 
 const analyzeResumeWithAI = async (resumeText, targetRole = '', jobDescription = '') => {
-  const model = getGemini();
-  const prompt = `You are an expert ATS resume analyzer. Analyze this resume and return ONLY valid JSON, no markdown:
-{"overallFeedback":"summary","sectionRatings":{"summary":{"score":3,"feedback":""},"experience":{"score":4,"feedback":""},"skills":{"score":3,"feedback":""},"projects":{"score":3,"feedback":""},"education":{"score":4,"feedback":""}},"skillsFound":[],"missingSkills":[],"strengths":[],"improvements":[],"rewrittenBullets":[],"powerWords":[]}
+  const prompt = `You are an expert ATS resume analyzer. Analyze this resume and return ONLY valid JSON, no markdown, no extra text.
+
+Return exactly this structure:
+{"overallFeedback":"2-3 sentence summary","sectionRatings":{"summary":{"score":3,"feedback":"feedback"},"experience":{"score":4,"feedback":"feedback"},"skills":{"score":3,"feedback":"feedback"},"projects":{"score":3,"feedback":"feedback"},"education":{"score":4,"feedback":"feedback"}},"skillsFound":["skill1","skill2"],"missingSkills":["skill1","skill2"],"strengths":["s1","s2"],"improvements":["i1","i2"],"rewrittenBullets":["bullet1","bullet2"],"powerWords":["word1","word2"]}
 
 RESUME: ${resumeText.substring(0, 3000)}
 TARGET ROLE: ${targetRole || 'Not specified'}
 JOB DESCRIPTION: ${jobDescription ? jobDescription.substring(0, 500) : 'Not provided'}`;
 
-  const result = await model.generateContent(prompt);
-  const content = result.response.text().trim();
-  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Invalid AI response format');
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return await generateAI(prompt, 'object');
+  } catch {
+    return {
+      overallFeedback: "AI analysis temporarily unavailable. Please try again.",
+      sectionRatings: {
+        summary: { score: 3, feedback: "Please try again later" },
+        experience: { score: 3, feedback: "Please try again later" },
+        skills: { score: 3, feedback: "Please try again later" },
+        projects: { score: 3, feedback: "Please try again later" },
+        education: { score: 3, feedback: "Please try again later" },
+      },
+      skillsFound: [],
+      missingSkills: [],
+      strengths: ["Resume uploaded successfully"],
+      improvements: ["AI temporarily unavailable"],
+      rewrittenBullets: [],
+      powerWords: [],
+    };
+  }
 };
 
 module.exports = { extractResumeText, calculateATSScore, detectBias, analyzeResumeWithAI };

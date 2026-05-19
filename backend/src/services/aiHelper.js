@@ -1,20 +1,14 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
 const cache = new Map();
 const MAX_CACHE_SIZE = 100;
 
-const getModel = () => {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  return genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-};
+const getGroq = () => new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const cleanJSON = (content) => {
-  return content
-    .replace(/```json\n?/g, '')
-    .replace(/```\n?/g, '')
-    .trim();
+  return content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 };
 
 const extractJSON = (content, type) => {
@@ -32,41 +26,43 @@ const extractJSON = (content, type) => {
 };
 
 const generateAI = async (prompt, type = 'object') => {
-  if (cache.has(prompt)) {
-    return cache.get(prompt);
-  }
+  if (cache.has(prompt)) return cache.get(prompt);
 
-  const model = getModel();
+  const groq = getGroq();
 
   for (let i = 0; i < 3; i++) {
     try {
-      const result = await model.generateContent(prompt);
-      const content = result.response.text().trim();
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.3,
+        max_tokens: 2048,
+      });
+
+      const content = completion.choices[0]?.message?.content?.trim();
+      if (!content) throw new Error('EMPTY_RESPONSE');
+
       const cleaned = cleanJSON(content);
       const parsed = extractJSON(cleaned, type);
-
-      if (!parsed) throw new Error('EMPTY_RESPONSE');
+      if (!parsed) throw new Error('PARSE_FAILED');
 
       if (cache.size > MAX_CACHE_SIZE) {
         const firstKey = cache.keys().next().value;
         cache.delete(firstKey);
       }
-
       cache.set(prompt, parsed);
       return parsed;
 
     } catch (err) {
-      const status = err?.status || err?.response?.status;
-      if (status === 429 || err.message?.includes('429')) {
+      if (err?.status === 429 || err.message?.includes('429')) {
         console.log(`Rate limited, retrying in ${2000 * (i + 1)}ms...`);
         await sleep(2000 * (i + 1));
       } else {
-        console.error('AI Error:', err.message);
+        console.error('Groq AI Error:', err.message);
         break;
       }
     }
   }
-
   throw new Error('AI_FAILED');
 };
 
